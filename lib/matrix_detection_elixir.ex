@@ -20,18 +20,16 @@ defmodule That do
   end
 
   @spec filter_by_area(list(), integer(), integer()) :: list()
-  def filter_by_area(contours_heirarchy, min_area, max_area) do
-    {contours, heirarchy} = contours_heirarchy
-
-    heirarchy = heirarchy |> Evision.Mat.to_nx(Nx.BinaryBackend) |> Nx.to_list() |> List.first()
-
-    {contours, heirarchy} =
-      Enum.zip(contours, heirarchy)
-      |> Enum.reject(fn {contour, _heirarchy} ->
-        area = Evision.contourArea(contour)
-        area < min_area or area > max_area
-      end)
-      |> Enum.unzip()
+  def filter_by_area(contours, min_area, max_area) do
+    contours
+    |> Enum.with_index()
+    |> Enum.reject(fn {contour, _} ->
+      area = Evision.contourArea(contour)
+      area < min_area or area > max_area
+    end)
+    |> Enum.map(fn {_, i} ->
+      i
+    end)
   end
 
   def find_quads(contours) do
@@ -50,7 +48,7 @@ defmodule That do
   # Take the parent contour
   # Check if a quad
   # Get the extreme points  
-  def find_inner_contours(heirarchy) do
+  def find_inner_most_contours(heirarchy) do
     Enum.filter(
       Enum.with_index(
         heirarchy
@@ -71,13 +69,9 @@ defmodule That do
 
   @spec find_contour_containing_matrix(term) :: [integer()]
   def find_contour_containing_matrix(heirarchy) do
-    # Find inner most contours fc == -1
-    # Find parents with 4 or less siblings
-
-    inner_contours = That.find_inner_contours(heirarchy)
-    # Unique by parent
-    Enum.uniq_by(inner_contours, fn {[_, _, _, x], _} -> x end)
+    find_inner_most_contours(heirarchy)
     |> Enum.map(fn {[_, _, _, x], _} -> x end)
+    |> Enum.uniq()
   end
 
   def find_extreme_points(contour) do
@@ -100,16 +94,29 @@ defmodule That do
     end
   end
 
-
   def test_decode_matrix(image) do
     gray = Evision.cvtColor(image, Evision.Constant.cv_COLOR_BGR2GRAY())
 
-    {_, thresholded} =
+    blurred =
       gray
-      |> Evision.threshold(
-        50,
+      |> Evision.blur({7, 7})
+
+    {_, thresholded} =
+      Evision.threshold(
+        blurred,
+        60,
         255,
         Evision.Constant.cv_THRESH_BINARY() ||| Evision.Constant.cv_THRESH_OTSU()
+      )
+
+    thresholded =
+      Evision.adaptiveThreshold(
+        blurred,
+        255,
+        Evision.Constant.cv_ADAPTIVE_THRESH_GAUSSIAN_C(),
+        Evision.Constant.cv_THRESH_BINARY_INV(),
+        101,
+        1
       )
 
     {contours, heirarchy} =
@@ -118,34 +125,42 @@ defmodule That do
         Evision.Constant.cv_RETR_TREE(),
         Evision.Constant.cv_CHAIN_APPROX_NONE()
       )
-      |> filter_by_area(10000, :infinity)
 
-    contours_with_matrix = find_contour_containing_matrix(heirarchy)
+    contour_idxs = filter_by_area(contours, 7000, :infinity)
 
-    # cropped =
+    heirarchy =
+      heirarchy
+      |> Evision.Mat.to_nx(Nx.BinaryBackend)
+      |> Nx.to_list()
+
+    contours_with_matrix =
+      contour_idxs
+      |> Enum.map(fn idx -> heirarchy |> Enum.at(idx) end)
+      |> find_contour_containing_matrix()
+
     Enum.reduce(
       contours_with_matrix,
       image,
       fn x, img ->
-        contour =
-          contours
-          |> Enum.at(x)
+        # contour =
+        contours
+        |> draw_contours_on_image(img)
 
-        cond do
-          contour == nil ->
-            img
-
-          true ->
-            contour
-            |> That.find_extreme_points()
-            |> Evision.convexHull(clockwise: false)
-            |> Evision.Mat.to_nx()
-            |> Nx.to_list()
-            |> Enum.map(fn [x] -> x end)
-            |> Enum.sort_by(fn [x, y] -> x * x + y * y end)
-            |> draw_points_on_image(img)
-        end
+        # |> That.find_extreme_points()
+        # |> Evision.convexHull(clockwise: false)
+        # |> Evision.Mat.to_nx()
+        # |> Nx.to_list()
+        # |> Enum.map(fn [x] -> x end)
+        # |> Enum.sort_by(fn [x, y] -> x * x + y * y end)
+        # |> draw_points_on_image(img)
       end
+    )
+
+    contour_idxs
+    |> Enum.map(fn x -> contours |> Enum.at(x) end)
+    |> draw_contours_on_image(
+      image
+      # |> Evision.cvtColor(Evision.Constant.cv_COLOR_GRAY2BGR())
     )
   end
 
@@ -174,9 +189,8 @@ defmodule That do
         :no_more_frames
     end
   end
-z
+
   def decode_matrix(image, show_image \\ false) do
-    # image = Evision.imread(image_path)
     gray = Evision.cvtColor(image, Evision.Constant.cv_COLOR_BGR2GRAY())
 
     {_, thresholded} =
@@ -220,9 +234,11 @@ z
       end)
     end
   end
+
   def test_image() do
     image = Evision.imread("../matrix_detection_input_images/2_skewed.png")
     Evision.Wx.imshow("frame", test_decode_matrix(image))
     Process.sleep(:infinity)
   end
 end
+
