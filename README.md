@@ -37,9 +37,8 @@ Expected beheviour:
 2. Check the output.
 3. Make changes to the appropiate values.
 4. Repeat.
-    - What happens after project is run?
-    Run That.decode_matrix on video feed
-
+    - What happens after project is run?   
+        Run `That.decode_matrix` on video feed
     - How to change the parameters?
 1. Stop the process
 2. Recive new values

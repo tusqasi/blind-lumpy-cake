@@ -68,7 +68,9 @@ defmodule That do
     Enum.filter(contours, fn c ->
       peri = Evision.arcLength(c, true)
       approx = Evision.approxPolyDP(c, 0.02 * peri, true)
-      {_, [size, 1]} = Evision.Mat.size(approx)
+      hull = Evision.convexHull(approx, returnPoints: false)
+
+      {_, [size, 1]} = Evision.Mat.size(hull)
       # four sides
       size == 4
     end)
@@ -142,7 +144,7 @@ defmodule That do
     end
   end
 
-  def test_decode_matrix(image) do
+  def test_decode_matrix(image, config) do
     gray = Evision.cvtColor(image, Evision.Constant.cv_COLOR_BGR2GRAY())
 
     blurred =
@@ -174,109 +176,46 @@ defmodule That do
         Evision.Constant.cv_CHAIN_APPROX_NONE()
       )
 
-    contour_idxs = filter_by_area(contours, 7000, :infinity)
+    contours_with_valid_area = filter_by_area(contours, 500, :infinity)
+    quad_contours = find_quads(contours)
 
     heirarchy =
       heirarchy
       |> Evision.Mat.to_nx(Nx.BinaryBackend)
       |> Nx.to_list()
+      |> List.first()
 
     contours_with_matrix =
-      contour_idxs
-      |> Enum.map(fn idx -> heirarchy |> Enum.at(idx) end)
+      contours_with_valid_area
+      |> Enum.map(fn idx -> Enum.at(heirarchy, idx) end)
       |> find_contour_containing_matrix()
 
-    Enum.reduce(
-      contours_with_matrix,
-      image,
-      fn _x, img ->
-        # contour =
-        contours
-        |> draw_contours_on_image(img)
-        |> That.find_extreme_points()
-        |> Evision.convexHull(clockwise: false)
-        |> Evision.Mat.to_nx()
-        |> Nx.to_list()
-        |> Enum.map(fn [x] -> x end)
-        |> Enum.sort_by(fn [x, y] -> x * x + y * y end)
-        |> draw_points_on_image(img)
-      end
-    )
-
-    contour_idxs
-    |> Enum.map(fn x -> contours |> Enum.at(x) end)
-    |> find_quads()
-    |> draw_contours_on_image(
-      image
-
-      # |> Evision.cvtColor(Evision.Constant.cv_COLOR_GRAY2BGR())
-    )
+    contours_with_matrix
+    |> Enum.map(fn x -> Enum.at(contours, x) end)
+    |> draw_contours_on_image(image)
   end
 
-  def show_video() do
+  def show_video(config) do
     cap = Evision.VideoCapture.videoCapture(0)
-    show_video(cap)
+    show_video(cap, config)
   end
 
-  def show_video(cap) do
+  def show_video(cap, config) do
+    Process.sleep(100)
+
     case Evision.VideoCapture.read(cap) do
       %Evision.Mat{} = frame ->
         # as along as you're using the same window title, 
         # the frame will be plotted in the same window
 
-        Evision.Wx.imshow("window title", That.test_decode_matrix(frame))
-        show_video(cap)
+        Evision.Wx.imshow("window title", That.test_decode_matrix(frame, config))
+        show_video(cap, config)
 
       _ ->
         # video has ended or an error occurred
         :no_more_frames
+        Evision.Wx.destroyWindow("window title")
+        Evision.VideoCapture.release(cap)
     end
   end
-
-  #   def decode_matrix(image, show_image \\ false) do
-  #     gray = Evision.cvtColor(image, Evision.Constant.cv_COLOR_BGR2GRAY())
-  #
-  #     {_, thresholded} =
-  #       gray
-  #       |> Evision.threshold(
-  #         50,
-  #         255,
-  #         Evision.Constant.cv_THRESH_BINARY() ||| Evision.Constant.cv_THRESH_OTSU()
-  #       )
-  #
-  #     {contours, heirarchy} =
-  #       Evision.findContours(
-  #         thresholded,
-  #         Evision.Constant.cv_RETR_TREE(),
-  #         Evision.Constant.cv_CHAIN_APPROX_NONE()
-  #       )
-  #
-  #     heirarchy = heirarchy |> Evision.Mat.to_nx() |> Nx.to_list()
-  # #
-  #     cropped =
-  #       contours
-  #       |> Enum.at(find_contour_containing_matrix(heirarchy))
-  #       |> That.find_extreme_points()
-  #       |> Evision.convexHull(clockwise: false)
-  #       |> Evision.Mat.to_nx()
-  #       |> Nx.to_list()
-  #       |> Enum.map(fn [x] -> x end)
-  #       |> Enum.sort_by(fn [x, y] -> x * x + y * y end)
-  #       |> That.crop_to_points(image)
-  #
-  #     if show_image do
-  #       cropped
-  #     else
-  #       [
-  #         [100, 100],
-  #         [300, 100],
-  #         [100, 300],
-  #         [300, 300]
-  #       ]
-  #       |> Enum.map(fn x ->
-  #         cropped[x]
-  #         |> Evision.Mat.at(0) >= 1
-  #       end)
-  #     end
-  #   end
 end
