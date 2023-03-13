@@ -1,11 +1,25 @@
 defmodule That do
+  alias Evision.ORB
   @green {0, 255, 0}
   import Bitwise
 
+  @type heirarchy :: list({ integer(), integer(), integer(), integer() })
+
+  @doc """
+  Takes a list of contours and draws them on the given image.
+  """
   def draw_contours_on_image(contours, image) do
     Evision.drawContours(image, contours, -1, @green, thickness: 2)
   end
 
+  @doc """
+  Draw points on image
+
+  Take a list of points (list of 2 element list) and an image, and draws
+  the position and the corrdinates on the given image.
+  """
+  @spec draw_points_on_image(list(integer()), Evision.Mat.maybe_mat_in()) ::
+          Evision.Mat.maybe_mat_out()
   def draw_points_on_image(points, image) do
     Enum.reduce(points, image, fn [x, y], img ->
       Evision.circle(img, {x, y}, 1, {0, 255, 0}, thickness: 3)
@@ -19,6 +33,9 @@ defmodule That do
     end)
   end
 
+  @doc """
+  Returns a list of indices of contours, areas of which lie in between the given range.
+  """
   @spec filter_by_area(list(), integer(), integer()) :: list()
   def filter_by_area(contours, min_area, max_area) do
     contours
@@ -32,6 +49,10 @@ defmodule That do
     end)
   end
 
+  @doc """
+  Returns a list of contours which are quadrilaterals.
+  """
+  @spec find_quads(list(Evision.Mat.maybe_mat_in())) :: list(Evision.Mat.maybe_mat_out())
   def find_quads(contours) do
     Enum.filter(contours, fn c ->
       peri = Evision.arcLength(c, true)
@@ -48,6 +69,15 @@ defmodule That do
   # Take the parent contour
   # Check if a quad
   # Get the extreme points  
+
+  @doc """
+  Returns the list of indices of contours which have no children.
+
+  OR
+
+  Returns the list of indices of contours which are deepest in the tree.
+  """
+  @spec find_inner_most_contours(heirarchy) :: heirarchy
   def find_inner_most_contours(heirarchy) do
     Enum.filter(
       Enum.with_index(
@@ -67,7 +97,10 @@ defmodule That do
     )
   end
 
-  @spec find_contour_containing_matrix(term) :: [integer()]
+  @doc """
+  Finds the coutours which could contain a matrix
+  """
+  @spec find_contour_containing_matrix(heirarchy) :: [integer()]
   def find_contour_containing_matrix(heirarchy) do
     find_inner_most_contours(heirarchy)
     |> Enum.map(fn {[_, _, _, x], _} -> x end)
@@ -145,14 +178,13 @@ defmodule That do
         # contour =
         contours
         |> draw_contours_on_image(img)
-
-        # |> That.find_extreme_points()
-        # |> Evision.convexHull(clockwise: false)
-        # |> Evision.Mat.to_nx()
-        # |> Nx.to_list()
-        # |> Enum.map(fn [x] -> x end)
-        # |> Enum.sort_by(fn [x, y] -> x * x + y * y end)
-        # |> draw_points_on_image(img)
+        |> That.find_extreme_points()
+        |> Evision.convexHull(clockwise: false)
+        |> Evision.Mat.to_nx()
+        |> Nx.to_list()
+        |> Enum.map(fn [x] -> x end)
+        |> Enum.sort_by(fn [x, y] -> x * x + y * y end)
+        |> draw_points_on_image(img)
       end
     )
 
@@ -241,4 +273,3 @@ defmodule That do
     Process.sleep(:infinity)
   end
 end
-
