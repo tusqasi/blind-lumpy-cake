@@ -177,7 +177,7 @@ defmodule That do
       )
 
     contours_with_valid_area = filter_by_area(contours, 500, :infinity)
-    quad_contours = find_quads(contours)
+    quad_contours = find_quads(contours)|> IO.inspect()
 
     heirarchy =
       heirarchy
@@ -201,7 +201,7 @@ defmodule That do
   end
 
   def show_video(cap, config) do
-    Process.sleep(100)
+    # Process.sleep(100)
 
     case Evision.VideoCapture.read(cap) do
       %Evision.Mat{} = frame ->

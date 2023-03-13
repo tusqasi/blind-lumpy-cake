@@ -24,6 +24,19 @@ mix compile
 
 ## Running the project
 
+You can run the whole CLI app with:
+```bash
+mix run -e "CLI.main(:nil)"
+```
+OR 
+
+Run justs the video feed with:
+```bash
+mix run -e "That.show_video()"
+```
+
+
+🚧 WIP
 Build the project into an executable with below command and then run the executable.
 ```bash
 mix escript.build
