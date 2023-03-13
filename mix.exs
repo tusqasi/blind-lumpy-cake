@@ -1,13 +1,15 @@
-defmodule MatrixDetectionElixir.MixProject do
+defmodule BlindLumpyCake.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :matrix_detection_elixir,
+      app: :blind_lumpy_cake,
       version: "0.1.0",
       elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      # ++ This needs to be added
+      escript: escript()
     ]
   end
 
@@ -22,10 +24,12 @@ defmodule MatrixDetectionElixir.MixProject do
   defp deps do
     [
       {:evision, "~> 0.1"},
-      {:kino, "~> 0.8.1"}
-
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
     ]
+  end
+
+  # This function lets us designate CLI module as the entry point to
+  # execution and CLI.main() function is passed the cmd args.
+  defp escript do
+    [main_module: CLI]
   end
 end

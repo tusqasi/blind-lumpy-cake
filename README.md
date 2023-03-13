@@ -1,21 +1,26 @@
-# MatrixDetectionElixir
+# Blind Lumy Cake
 
-**TODO: Add description**
-
+Decode a matrix pattern from the camera to a number.
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `matrix_detection_elixir` to your list of dependencies in `mix.exs`:
+- Clone the repo
 
-```elixir
-def deps do
-  [
-    {:matrix_detection_elixir, "~> 0.1.0"}
-  ]
-end
+```bash
+git clone https://github.com/tusqasi/blind-lumpy-cake
+
+cd blind-lumpy-cake
+```
+- Install the dependencies
+
+```bash
+mix deps.get 
+mix compile
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/matrix_detection_elixir>.
+## Running the project
 
+Build the project into an executable with below command and then run the executable.
+```bash
+mix escript.Build
+./matrix_detection_elixir
+```

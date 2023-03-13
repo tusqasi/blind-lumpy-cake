@@ -1,16 +1,27 @@
 defmodule That do
-  alias Evision.ORB
-  @green {0, 255, 0}
-  import Bitwise
+  @green {0, 255, 0, 255}
 
-  @type heirarchy :: list({ integer(), integer(), integer(), integer() })
+  @type heirarchy :: list({integer(), integer(), integer(), integer()})
 
   @doc """
   Takes a list of contours and draws them on the given image.
   """
-  def draw_contours_on_image(contours, image) do
+  @spec draw_contours_on_image(
+          Evision.Mat.maybe_mat_in() | [Evision.Mat.maybe_mat_in()],
+          Evision.Mat.maybe_mat_in()
+        ) ::
+          Evision.Mat.maybe_mat_out()
+  def draw_contours_on_image(contours, image)
+      when is_list(contours) or (is_tuple(contours) and is_struct(image, Evision.Mat)) do
     Evision.drawContours(image, contours, -1, @green, thickness: 2)
   end
+
+  # @spec draw_points_on_image(Evision.Mat.maybe_mat_in(), Evision.Mat.maybe_mat_in()) ::
+  #         Evision.Mat.maybe_mat_out()
+  # def draw_contours_on_image(contour, image)
+  #     when is_struct(contour, Evision.Mat) and is_struct(image, Evision.Mat) do
+  #   Evision.drawContours(image, [contour], -1, @green, thickness: 2)
+  # end
 
   @doc """
   Draw points on image
@@ -22,7 +33,7 @@ defmodule That do
           Evision.Mat.maybe_mat_out()
   def draw_points_on_image(points, image) do
     Enum.reduce(points, image, fn [x, y], img ->
-      Evision.circle(img, {x, y}, 1, {0, 255, 0}, thickness: 3)
+      Evision.circle(img, {x, y}, 1, @green, thickness: 3)
       |> Evision.putText(
         "#{x}, #{y}",
         {x + 10, y},
@@ -36,7 +47,7 @@ defmodule That do
   @doc """
   Returns a list of indices of contours, areas of which lie in between the given range.
   """
-  @spec filter_by_area(list(), integer(), integer()) :: list()
+  @spec filter_by_area(list(), integer(), integer() | :infinity) :: list()
   def filter_by_area(contours, min_area, max_area) do
     contours
     |> Enum.with_index()
@@ -100,7 +111,7 @@ defmodule That do
   @doc """
   Finds the coutours which could contain a matrix
   """
-  @spec find_contour_containing_matrix(heirarchy) :: [integer()]
+  @spec find_contour_containing_matrix(heirarchy) :: [integer(), ...]
   def find_contour_containing_matrix(heirarchy) do
     find_inner_most_contours(heirarchy)
     |> Enum.map(fn {[_, _, _, x], _} -> x end)
@@ -112,17 +123,21 @@ defmodule That do
     Evision.approxPolyDP(contour, 0.02 * peri, true)
   end
 
+  @spec crop_to_points(list(list(integer())), Evision.Mat.maybe_mat_in()) ::
+          Evision.Mat.maybe_mat_out()
   def crop_to_points(points, image) do
     pts1 = Evision.Mat.literal(points, :f32)
 
     pts2 =
       Evision.Mat.literal([[10, 10], [400 - 10, 10], [10, 400 - 10], [400 - 10, 400 - 10]], :f32)
 
-    case Evision.getPerspectiveTransform(pts1, pts2) do
-      {:ok, m} ->
-        Evision.warpPerspective(image, m, {410, 410})
+    transform = Evision.perspectiveTransform(pts1, pts2)
 
-      _ ->
+    cond do
+      is_struct(Evision.Mat, transform) ->
+        Evision.warpPerspective(image, transform, {410, 410})
+
+      true ->
         image
     end
   end
@@ -134,13 +149,13 @@ defmodule That do
       gray
       |> Evision.blur({7, 7})
 
-    {_, thresholded} =
-      Evision.threshold(
-        blurred,
-        60,
-        255,
-        Evision.Constant.cv_THRESH_BINARY() ||| Evision.Constant.cv_THRESH_OTSU()
-      )
+    # {_, thresholded} =
+    #   Evision.threshold(
+    #     blurred,
+    #     60,
+    #     255,
+    #     Evision.Constant.cv_THRESH_BINARY() ||| Evision.Constant.cv_THRESH_OTSU()
+    #   )
 
     thresholded =
       Evision.adaptiveThreshold(
@@ -174,7 +189,7 @@ defmodule That do
     Enum.reduce(
       contours_with_matrix,
       image,
-      fn x, img ->
+      fn _x, img ->
         # contour =
         contours
         |> draw_contours_on_image(img)
@@ -190,16 +205,12 @@ defmodule That do
 
     contour_idxs
     |> Enum.map(fn x -> contours |> Enum.at(x) end)
+    |> find_quads()
     |> draw_contours_on_image(
       image
+
       # |> Evision.cvtColor(Evision.Constant.cv_COLOR_GRAY2BGR())
     )
-  end
-
-  def main() do
-    cap = Evision.VideoCapture.videoCapture()
-    img = Evision.VideoCapture.retrieve(cap)
-    # Evision.Wx.imshow("frame", img)
   end
 
   def show_video() do
@@ -222,54 +233,50 @@ defmodule That do
     end
   end
 
-  def decode_matrix(image, show_image \\ false) do
-    gray = Evision.cvtColor(image, Evision.Constant.cv_COLOR_BGR2GRAY())
-
-    {_, thresholded} =
-      gray
-      |> Evision.threshold(
-        50,
-        255,
-        Evision.Constant.cv_THRESH_BINARY() ||| Evision.Constant.cv_THRESH_OTSU()
-      )
-
-    {contours, heirarchy} =
-      Evision.findContours(
-        thresholded,
-        Evision.Constant.cv_RETR_TREE(),
-        Evision.Constant.cv_CHAIN_APPROX_NONE()
-      )
-
-    cropped =
-      contours
-      |> Enum.at(find_contour_containing_matrix(heirarchy))
-      |> That.find_extreme_points()
-      |> Evision.convexHull(clockwise: false)
-      |> Evision.Mat.to_nx()
-      |> Nx.to_list()
-      |> Enum.map(fn [x] -> x end)
-      |> Enum.sort_by(fn [x, y] -> x * x + y * y end)
-      |> That.crop_to_points(image)
-
-    if show_image do
-      cropped
-    else
-      [
-        [100, 100],
-        [300, 100],
-        [100, 300],
-        [300, 300]
-      ]
-      |> Enum.map(fn x ->
-        cropped[x]
-        |> Evision.Mat.at(0) >= 1
-      end)
-    end
-  end
-
-  def test_image() do
-    image = Evision.imread("../matrix_detection_input_images/2_skewed.png")
-    Evision.Wx.imshow("frame", test_decode_matrix(image))
-    Process.sleep(:infinity)
-  end
+  #   def decode_matrix(image, show_image \\ false) do
+  #     gray = Evision.cvtColor(image, Evision.Constant.cv_COLOR_BGR2GRAY())
+  #
+  #     {_, thresholded} =
+  #       gray
+  #       |> Evision.threshold(
+  #         50,
+  #         255,
+  #         Evision.Constant.cv_THRESH_BINARY() ||| Evision.Constant.cv_THRESH_OTSU()
+  #       )
+  #
+  #     {contours, heirarchy} =
+  #       Evision.findContours(
+  #         thresholded,
+  #         Evision.Constant.cv_RETR_TREE(),
+  #         Evision.Constant.cv_CHAIN_APPROX_NONE()
+  #       )
+  #
+  #     heirarchy = heirarchy |> Evision.Mat.to_nx() |> Nx.to_list()
+  # #
+  #     cropped =
+  #       contours
+  #       |> Enum.at(find_contour_containing_matrix(heirarchy))
+  #       |> That.find_extreme_points()
+  #       |> Evision.convexHull(clockwise: false)
+  #       |> Evision.Mat.to_nx()
+  #       |> Nx.to_list()
+  #       |> Enum.map(fn [x] -> x end)
+  #       |> Enum.sort_by(fn [x, y] -> x * x + y * y end)
+  #       |> That.crop_to_points(image)
+  #
+  #     if show_image do
+  #       cropped
+  #     else
+  #       [
+  #         [100, 100],
+  #         [300, 100],
+  #         [100, 300],
+  #         [300, 300]
+  #       ]
+  #       |> Enum.map(fn x ->
+  #         cropped[x]
+  #         |> Evision.Mat.at(0) >= 1
+  #       end)
+  #     end
+  #   end
 end
