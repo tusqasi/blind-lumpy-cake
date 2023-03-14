@@ -1,4 +1,5 @@
 defmodule That do
+  alias Evision.TonemapDrago
   @green {0, 255, 0, 255}
 
   @type heirarchy :: list({integer(), integer(), integer(), integer()})
@@ -15,13 +16,6 @@ defmodule That do
       when is_list(contours) or (is_tuple(contours) and is_struct(image, Evision.Mat)) do
     Evision.drawContours(image, contours, -1, @green, thickness: 2)
   end
-
-  # @spec draw_points_on_image(Evision.Mat.maybe_mat_in(), Evision.Mat.maybe_mat_in()) ::
-  #         Evision.Mat.maybe_mat_out()
-  # def draw_contours_on_image(contour, image)
-  #     when is_struct(contour, Evision.Mat) and is_struct(image, Evision.Mat) do
-  #   Evision.drawContours(image, [contour], -1, @green, thickness: 2)
-  # end
 
   @doc """
   Draw points on image
@@ -52,6 +46,7 @@ defmodule That do
     contours
     |> Enum.with_index()
     |> Enum.reject(fn {contour, _} ->
+      # |> Enum.reject(fn contour ->
       area = Evision.contourArea(contour)
       area < min_area or area > max_area
     end)
@@ -63,16 +58,20 @@ defmodule That do
   @doc """
   Returns a list of contours which are quadrilaterals.
   """
-  @spec find_quads(list(Evision.Mat.maybe_mat_in())) :: list(Evision.Mat.maybe_mat_out())
+  @spec find_quads(list(Evision.Mat.maybe_mat_in())) :: list(integer())
   def find_quads(contours) do
-    Enum.filter(contours, fn c ->
+    Enum.with_index(contours)
+    |> Enum.filter(fn {c, _} ->
       peri = Evision.arcLength(c, true)
-      approx = Evision.approxPolyDP(c, 0.02 * peri, true)
+      approx = Evision.approxPolyDP(c, 0.01 * peri, true)
       hull = Evision.convexHull(approx, returnPoints: false)
 
       {_, [size, 1]} = Evision.Mat.size(hull)
       # four sides
       size == 4
+    end)
+    |> Enum.map(fn {_, idx} ->
+      idx
     end)
   end
 
@@ -93,12 +92,7 @@ defmodule That do
   @spec find_inner_most_contours(heirarchy) :: heirarchy
   def find_inner_most_contours(heirarchy) do
     Enum.filter(
-      Enum.with_index(
-        heirarchy
-        # |> Evision.Mat.to_nx()
-        # |> Nx.to_list()
-        # |> List.first()
-      ),
+      Enum.with_index(heirarchy),
       fn
         # No children
         {[_, _, -1, _], _} ->
@@ -135,29 +129,15 @@ defmodule That do
 
     transform = Evision.perspectiveTransform(pts1, pts2)
 
-    cond do
-      is_struct(Evision.Mat, transform) ->
-        Evision.warpPerspective(image, transform, {410, 410})
-
-      true ->
-        image
-    end
+    Evision.warpPerspective(image, transform, {410, 410})
   end
 
-  def test_decode_matrix(image, config) do
+  def test_decode_matrix(image, _config) do
     gray = Evision.cvtColor(image, Evision.Constant.cv_COLOR_BGR2GRAY())
 
     blurred =
       gray
-      |> Evision.blur({7, 7})
-
-    # {_, thresholded} =
-    #   Evision.threshold(
-    #     blurred,
-    #     60,
-    #     255,
-    #     Evision.Constant.cv_THRESH_BINARY() ||| Evision.Constant.cv_THRESH_OTSU()
-    #   )
+      |> Evision.medianBlur(9)
 
     thresholded =
       Evision.adaptiveThreshold(
@@ -176,8 +156,11 @@ defmodule That do
         Evision.Constant.cv_CHAIN_APPROX_NONE()
       )
 
-    contours_with_valid_area = filter_by_area(contours, 500, :infinity)
-    quad_contours = find_quads(contours)|> IO.inspect()
+    contours_with_valid_area = filter_by_area(contours, 2000, 200_000)
+
+    quad_contours =
+      contours
+      |> find_quads()
 
     heirarchy =
       heirarchy
@@ -185,12 +168,19 @@ defmodule That do
       |> Nx.to_list()
       |> List.first()
 
-    contours_with_matrix =
-      contours_with_valid_area
-      |> Enum.map(fn idx -> Enum.at(heirarchy, idx) end)
-      |> find_contour_containing_matrix()
+    # TODO: Make this reject none area and none quad indices
+    # matrix_containing_contours =
+    #   quad_contours
+    #   |> Enum.map(fn x -> Enum.at(heirarchy, x) end)
+    #   |> find_contour_containing_matrix()
 
-    contours_with_matrix
+    # final_contours = matrix_containing_contours -- quad_contours
+    # IO.puts("Total contours: #{length(contours)}")
+    # IO.puts("Valid area contours: #{length(contours_with_valid_area)}")
+    # IO.puts("Quad contours : #{length(quad_contours)}")
+    # IO.puts("Final contours : #{length(final_contours)}")
+
+    contours_with_valid_area
     |> Enum.map(fn x -> Enum.at(contours, x) end)
     |> draw_contours_on_image(image)
   end
